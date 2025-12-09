@@ -1,5 +1,4 @@
 <?php
-
 include 'seguridad.php';
 include 'conexion.php';
 
@@ -31,7 +30,7 @@ $seg_restantes = max(0, ($_SESSION['login_rl']['bloqueado_hasta'] ?? 0) - $ahora
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['login'])) {
 
     if ($bloqueado) {
-        $error = "⏳ Demasiados intentos. Espera {$seg_restantes}s.";
+        // No mostramos error aquí para evitar duplicado, lo gestionará el HTML
     } else {
 
         $usuario = trim($_POST['usuario'] ?? '');
@@ -66,7 +65,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['login'])) {
 
             if ($stmt->fetch()) {
 
-                // Crear la sesión segura
                 session_regenerate_id(true);
 
                 $_SESSION['usuario']       = $usuario;
@@ -82,7 +80,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['login'])) {
                 exit;
 
             } else {
-                $error = "⚠️ Usuario válido en dominio, pero sin rol en la base de datos.";
+                $error = "⚠ Usuario válido en dominio, pero sin rol en la base de datos.";
             }
 
             $stmt->close();
@@ -96,11 +94,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['login'])) {
 
             if ($_SESSION['login_rl']['intentos'] >= MAX_INTENTOS) {
                 $_SESSION['login_rl']['bloqueado_hasta'] = $ahora + BLOQUEO_SEG;
-                $error = "⏳ Demasiados intentos. Espera " . BLOQUEO_SEG . "s.";
-            } else {
-                $restan = MAX_INTENTOS - $_SESSION['login_rl']['intentos'];
-                $error = "❌ Usuario o clave incorrectos. Intentos restantes: {$restan}.";
-            }
+            } 
         }
 
         ldap_unbind($ldapconn);
@@ -123,16 +117,30 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['login'])) {
     <div class="form-login">
         <h2>🔐 Acceso al sistema</h2>
 
-        <?php if (isset($error)): ?>
-            <p class="mensaje-error"><?= htmlspecialchars($error) ?></p>
-        <?php endif; ?>
+<?php
+$ahora = time();
+$bloqueado = $ahora < ($_SESSION['login_rl']['bloqueado_hasta'] ?? 0);
+$seg_restantes = max(0, ($_SESSION['login_rl']['bloqueado_hasta'] ?? 0) - $ahora);
 
-        <!-- Cálculo bloqueo para mostrarlo -->
-        <?php
-        $ahora = time();
-        $bloqueado = $ahora < ($_SESSION['login_rl']['bloqueado_hasta'] ?? 0);
-        $seg_restantes = max(0, ($_SESSION['login_rl']['bloqueado_hasta'] ?? 0) - $ahora);
-        ?>
+// Mensaje de intento fallido (solo si no está bloqueado)
+if ($_SESSION['login_rl']['intentos'] > 0 && !$bloqueado) {
+    $restan = MAX_INTENTOS - $_SESSION['login_rl']['intentos'];
+    if ($restan > 0) {
+        echo "<p class='mensaje-error'>❌ Intento fallido. Intentos restantes: {$restan}</p>";
+    }
+}
+
+// Mensaje de bloqueo con cuenta atrás (sin duplicados)
+if ($bloqueado) {
+    header("Refresh: 1");
+    echo "<p class='mensaje-error'>⏳ Demasiados intentos. Espera {$seg_restantes}s…</p>";
+}
+
+// Mostrar solo errores importantes
+if (isset($error) && !$bloqueado && $_SESSION['login_rl']['intentos'] === 0) {
+    echo "<p class='mensaje-error'>" . htmlspecialchars($error) . "</p>";
+}
+?>
 
         <form method="POST" autocomplete="off">
             <label>Usuario:</label>
@@ -141,14 +149,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['login'])) {
             <label>Contraseña:</label>
             <input type="password" name="clave" required <?= $bloqueado ? 'disabled' : '' ?>>
 
-            <input type="submit" name="login"
-                   value="<?= $bloqueado ? "Bloqueado..." : "Entrar" ?>"
-                   <?= $bloqueado ? 'disabled' : '' ?>>
+            <input type="submit" name="login" value="Entrar" <?= $bloqueado ? 'disabled' : '' ?>>
         </form>
 
-        <?php if ($bloqueado): ?>
-            <p class="mensaje-error">⏳ Espera <?= (int)$seg_restantes ?>s…</p>
-        <?php endif; ?>
     </div>
 
 <?php else: ?>
@@ -165,7 +168,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['login'])) {
         <li><a href="ver_materiales.php">📦 Ver materiales</a></li>
         <?php if (in_array($_SESSION['rol'], ['admin', 'furriel'])): ?>
             <li><a href="asignar_material.php">🎒 Asignar Material</a></li>
-            <li><a href="gestionar_materiales.php">🛠️ Gestionar materiales</a></li>
+            <li><a href="gestionar_materiales.php">🛠 Gestionar materiales</a></li>
         <?php endif; ?>
         <li><a href="ver_armamento.php">🔍 Ver armamento</a></li>
         <?php if (in_array($_SESSION['rol'], ['admin', 'armero'])): ?>
@@ -181,4 +184,3 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['login'])) {
 <?php include 'footer.php'; ?>
 </body>
 </html>
-
